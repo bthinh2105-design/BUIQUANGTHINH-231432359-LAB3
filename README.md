@@ -40,5 +40,5 @@ ESP32 MQTT TCP Port: 1883
 WebSocket Port: 8000
 
 
-## 8. Link Wokwi
+## 6. Link Wokwi
 https://wokwi.com/projects/480580487536267265
