@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire Alarm Monitoring</title>
+
+    <!-- Thu vien MQTT -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+    <!-- Thu vien bieu do -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #eef2f7;
+            color: #263445;
+            padding: 25px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: auto;
+        }
+
+        header {
+            background: #17365d;
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 22px;
+        }
+
+        header h1 {
+            margin-bottom: 10px;
+        }
+
+        .connection {
+            display: inline-block;
+            padding: 8px 15px;
+            border-radius: 20px;
+            background: #a83232;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+
+        .connected {
+            background: #16864b;
+        }
+
+        .section-title {
+            margin: 22px 0 13px;
+            font-size: 20px;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 18px;
+        }
+
+        .card {
+            background: white;
+            padding: 22px;
+            border-radius: 12px;
+            box-shadow: 0 3px 12px #00000010;
+        }
+
+        .card h3 {
+            color: #66758a;
+            margin-bottom: 15px;
+        }
+
+        .value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #1769aa;
+        }
+
+        .unit {
+            color: #78879a;
+            font-size: 14px;
+        }
+
+        .alarm {
+            margin-top: 18px;
+            padding: 17px;
+            background: white;
+            border-radius: 12px;
+        }
+
+        .alarm span {
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .normal {
+            color: #16864b;
+        }
+
+        .warning {
+            color: #dc8c13;
+        }
+
+        .danger {
+            color: #cf2929;
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 18px;
+        }
+
+        .chart-box {
+            height: 280px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        .chart-box h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .controls {
+            background: white;
+            padding: 23px;
+            border-radius: 12px;
+        }
+
+        .mode-buttons,
+        .device-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        button {
+            border: none;
+            padding: 12px 22px;
+            border-radius: 7px;
+            cursor: pointer;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            background: #64748b;
+        }
+
+        button:hover:not(:disabled) {
+            opacity: 0.85;
+        }
+
+        button:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .auto-btn {
+            background: #16864b;
+        }
+
+        .manual-btn {
+            background: #2563eb;
+        }
+
+        .device-btn {
+            background: #1769aa;
+            min-width: 155px;
+        }
+
+        .device-status {
+            margin-top: 10px;
+            color: #64748b;
+        }
+
+        .device {
+            border-top: 1px solid #e2e8f0;
+            margin-top: 20px;
+            padding-top: 18px;
+        }
+
+        footer {
+            text-align: center;
+            color: #8491a3;
+            margin-top: 25px;
+            font-size: 13px;
+        }
+
+        @media (max-width: 700px) {
+            body {
+                padding: 12px;
+            }
+
+            .cards,
+            .charts {
+                grid-template-columns: 1fr;
+            }
+
+            .value {
+                font-size: 30px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+    <header>
+        <h1>FIRE ALARM MONITORING</h1>
+        <p>He thong giam sat bao chay gia dinh su dung ESP32 va MQTT</p>
+
+        <div id="connection" class="connection">
+            Dang ket noi MQTT...
+        </div>
+    </header>
+
+    <!-- DU LIEU CAM BIEN -->
+    <h2 class="section-title">1. Du lieu cam bien</h2>
+
+    <div class="cards">
+
+        <div class="card">
+            <h3>NON DO KHI GAS / KHOI</h3>
+            <div class="value">
+                <span id="gasValue">--</span>
+            </div>
+            <span class="unit">ADC (0 - 4095)</span>
+        </div>
+
+        <div class="card">
+            <h3>NHIET DO MOI TRUONG</h3>
+            <div class="value">
+                <span id="tempValue">--</span>
+                <span class="unit">°C</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- CANH BAO -->
+    <h2 class="section-title">2. Trang thai canh bao</h2>
+
+    <div class="alarm">
+        Trang thai:
+        <span id="alarmValue" class="normal">
+            CHO DU LIEU
+        </span>
+    </div>
+
+    <!-- BIEU DO -->
+    <h2 class="section-title">3. Bieu do theo thoi gian thuc</h2>
+
+    <div class="charts">
+
+        <div class="chart-box">
+            <h3>Muc khi gas (ADC)</h3>
+            <canvas id="gasChart"></canvas>
+        </div>
+
+        <div class="chart-box">
+            <h3>Nhiet do (°C)</h3>
+            <canvas id="tempChart"></canvas>
+        </div>
+
+    </div>
+
+    <!-- DIEU KHIEN -->
+    <h2 class="section-title">4. Dieu khien thiet bi</h2>
+
+    <div class="controls">
+
+        <h3>Che do hoat dong</h3>
+
+        <div class="mode-buttons">
+            <button class="auto-btn" onclick="setMode('AUTO')">
+                AUTO
+            </button>
+
+            <button class="manual-btn" onclick="setMode('MANUAL')">
+                MANUAL
+            </button>
+        </div>
+
+        <p class="device-status">
+            Che do hien tai:
+            <strong id="modeValue">--</strong>
+        </p>
+
+        <!-- QUAT -->
+        <div class="device">
+
+            <h3>QUAT THONG GIO</h3>
+
+            <p class="device-status">
+                Trang thai:
+                <strong id="fanStatus">--</strong>
+            </p>
+
+            <div class="device-buttons">
+                <button id="fanButton"
+                        class="device-btn"
+                        onclick="toggleFan()"
+                        disabled>
+                    DANG CHO
+                </button>
+            </div>
+
+        </div>
+
+        <!-- MAY BOM -->
+        <div class="device">
+
+            <h3>MAY BOM NUOC</h3>
+
+            <p class="device-status">
+                Trang thai:
+                <strong id="pumpStatus">--</strong>
+            </p>
+
+            <div class="device-buttons">
+                <button id="pumpButton"
+                        class="device-btn"
+                        onclick="togglePump()"
+                        disabled>
+                    DANG CHO
+                </button>
+            </div>
+
+        </div>
+
+        <p class="device-status">
+            * Nut dieu khien chi hoat dong trong che do MANUAL.
+        </p>
+
+    </div>
+
+    <footer>
+        FIRE ALARM SYSTEM | ESP32 - FREERTOS - MQTT
+    </footer>
+
+</div>
+
+
+<script>
+
+//==================================================
+// 1. CAU HINH MQTT
+//==================================================
+
+const BROKER_URL =
+    "ws://broker.hivemq.com:8000/mqtt";
+
+const BASE_TOPIC =
+    "lab3/firealarm/demo";
+
+const TOPICS = {
+
+    gas: BASE_TOPIC + "/gas",
+
+    temp: BASE_TOPIC + "/temp",
+
+    fan: BASE_TOPIC + "/fan",
+
+    pump: BASE_TOPIC + "/pump",
+
+    alarm: BASE_TOPIC + "/alarm",
+
+    mode: BASE_TOPIC + "/mode",
+
+    cmdFan: BASE_TOPIC + "/cmd/fan",
+
+    cmdPump: BASE_TOPIC + "/cmd/pump",
+
+    cmdMode: BASE_TOPIC + "/cmd/mode"
+
+};
+
+
+//==================================================
+// 2. KHAI BAO TRANG THAI
+//==================================================
+
+let connected = false;
+
+let currentMode = "--";
+
+let fanState = "OFF";
+
+let pumpState = "OFF";
+
+
+//==================================================
+// 3. KET NOI MQTT
+//==================================================
+
+const client = mqtt.connect(BROKER_URL, {
+
+    clientId:
+        "FireAlarmWeb_" +
+        Math.random().toString(16).substring(2, 10),
+
+    clean: true,
+
+    connectTimeout: 10000,
+
+    reconnectPeriod: 3000,
+
+    keepalive: 30
+
+});
+
+
+//==================================================
+// 4. HIEN THI TRANG THAI KET NOI
+//==================================================
+
+function showConnection(status, success) {
+
+    const element =
+        document.getElementById("connection");
+
+    element.innerText = status;
+
+    element.className = success
+        ? "connection connected"
+        : "connection";
+
+}
+
+
+//==================================================
+// 5. KHI KET NOI THANH CONG
+//==================================================
+
+client.on("connect", function () {
+
+    connected = true;
+
+    showConnection("MQTT: DA KET NOI", true);
+
+    console.log("Da ket noi MQTT Broker!");
+
+    // Dang ky nhan du lieu cam bien
+
+    client.subscribe(TOPICS.gas);
+
+    client.subscribe(TOPICS.temp);
+
+    // Dang ky nhan trang thai thiet bi
+
+    client.subscribe(TOPICS.fan);
+
+    client.subscribe(TOPICS.pump);
+
+    client.subscribe(TOPICS.alarm);
+
+    client.subscribe(TOPICS.mode);
+
+});
+
+
+client.on("reconnect", function () {
+
+    connected = false;
+
+    showConnection("Dang ket noi lai...", false);
+
+});
+
+
+client.on("offline", function () {
+
+    connected = false;
+
+    showConnection("MQTT NGOAI TUYEN", false);
+
+});
+
+
+client.on("error", function (error) {
+
+    console.error("MQTT Error:", error);
+
+    showConnection("LOI KET NOI MQTT", false);
+
+});
+
+
+//==================================================
+// 6. CAU HINH BIEU DO GAS
+//==================================================
+
+const gasChart = new Chart(
+
+    document.getElementById("gasChart"),
+
+    {
+
+        type: "line",
+
+        data: {
+
+            labels: [],
+
+            datasets: [{
+
+                label: "Gas ADC",
+
+                data: [],
+
+                borderColor: "#e34b4b",
+
+                backgroundColor: "rgba(227,75,75,0.12)",
+
+                borderWidth: 2,
+
+                fill: true,
+
+                tension: 0.3
+
+            }]
+
+        },
+
+        options: {
+
+            responsive: true,
+
+            maintainAspectRatio: false,
+
+            animation: false,
+
+            scales: {
+
+                y: {
+
+                    min: 0,
+
+                    max: 4095,
+
+                    title: {
+
+                        display: true,
+
+                        text: "Gia tri ADC"
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    }
+
+);
+
+
+//==================================================
+// 7. CAU HINH BIEU DO NHIET DO
+//==================================================
+
+const tempChart = new Chart(
+
+    document.getElementById("tempChart"),
+
+    {
+
+        type: "line",
+
+        data: {
+
+            labels: [],
+
+            datasets: [{
+
+                label: "Temperature",
+
+                data: [],
+
+                borderColor: "#2586db",
+
+                backgroundColor: "rgba(37,134,219,0.12)",
+
+                borderWidth: 2,
+
+                fill: true,
+
+                tension: 0.3
+
+            }]
+
+        },
+
+        options: {
+
+            responsive: true,
+
+            maintainAspectRatio: false,
+
+            animation: false,
+
+            scales: {
+
+                y: {
+
+                    min: 0,
+
+                    max: 100,
+
+                    title: {
+
+                        display: true,
+
+                        text: "Nhiet do (°C)"
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    }
+
+);
+
+
+//==================================================
+// 8. HAM CAP NHAT BIEU DO
+//==================================================
+
+function addChartData(chart, value) {
+
+    const time =
+        new Date().toLocaleTimeString();
+
+    chart.data.labels.push(time);
+
+    chart.data.datasets[0].data.push(value);
+
+    // Chi hien thi 30 mau gan nhat
+
+    if (chart.data.labels.length > 30) {
+
+        chart.data.labels.shift();
+
+        chart.data.datasets[0].data.shift();
+
+    }
+
+    chart.update("none");
+
+}
+
+
+//==================================================
+// 9. CAP NHAT TRANG THAI QUAT
+//==================================================
+
+function updateFan() {
+
+    document.getElementById("fanStatus").innerText =
+        fanState === "ON" ? "DANG BAT" : "DANG TAT";
+
+    const button =
+        document.getElementById("fanButton");
+
+    button.innerText =
+        fanState === "ON" ? "TAT QUAT" : "BAT QUAT";
+
+    button.disabled =
+        !connected || currentMode !== "MANUAL";
+
+}
+
+
+//==================================================
+// 10. CAP NHAT TRANG THAI MAY BOM
+//==================================================
+
+function updatePump() {
+
+    document.getElementById("pumpStatus").innerText =
+        pumpState === "ON" ? "DANG BAT" : "DANG TAT";
+
+    const button =
+        document.getElementById("pumpButton");
+
+    button.innerText =
+        pumpState === "ON" ? "TAT MAY BOM" : "BAT MAY BOM";
+
+    button.disabled =
+        !connected || currentMode !== "MANUAL";
+
+}
+
+
+//==================================================
+// 11. CAP NHAT CHE DO
+//==================================================
+
+function updateMode() {
+
+    document.getElementById("modeValue").innerText =
+        currentMode;
+
+    updateFan();
+
+    updatePump();
+
+}
+
+
+//==================================================
+// 12. NHAN DU LIEU TU MQTT
+//==================================================
+
+client.on("message", function (topic, payload) {
+
+    const value = payload.toString().trim();
+
+    console.log("Topic:", topic, "| Value:", value);
+
+
+    // Nhan du lieu GAS
+
+    if (topic === TOPICS.gas) {
+
+        const gas = Number(value);
+
+        if (Number.isFinite(gas)) {
+
+            document.getElementById("gasValue")
+                .innerText = gas;
+
+            addChartData(gasChart, gas);
+
+        }
+
+    }
+
+
+    // Nhan du lieu NHIET DO
+
+    else if (topic === TOPICS.temp) {
+
+        const temp = Number(value);
+
+        if (Number.isFinite(temp)) {
+
+            document.getElementById("tempValue")
+                .innerText = temp.toFixed(2);
+
+            addChartData(tempChart, temp);
+
+        }
+
+    }
+
+
+    // Nhan trang thai QUAT
+
+    else if (topic === TOPICS.fan) {
+
+        if (value === "ON" || value === "OFF") {
+
+            fanState = value;
+
+            updateFan();
+
+        }
+
+    }
+
+
+    // Nhan trang thai MAY BOM
+
+    else if (topic === TOPICS.pump) {
+
+        if (value === "ON" || value === "OFF") {
+
+            pumpState = value;
+
+            updatePump();
+
+        }
+
+    }
+
+
+    // Nhan trang thai CANH BAO
+
+    else if (topic === TOPICS.alarm) {
+
+        const alarm =
+            document.getElementById("alarmValue");
+
+        alarm.innerText = value;
+
+        alarm.className = "normal";
+
+        if (value === "NORMAL") {
+
+            alarm.className = "normal";
+
+        }
+
+        else if (value === "GAS" ||
+                 value === "TEMP" ||
+                 value === "BOTH") {
+
+            alarm.className = "danger";
+
+        }
+
+    }
+
+
+    // Nhan CHE DO HOAT DONG
+
+    else if (topic === TOPICS.mode) {
+
+        if (value === "AUTO" ||
+            value === "MANUAL") {
+
+            currentMode = value;
+
+            updateMode();
+
+        }
+
+    }
+
+});
+
+
+//==================================================
+// 13. HAM GUI LENH MQTT
+//==================================================
+
+function publishCommand(topic, value) {
+
+    if (!connected) {
+
+        alert("MQTT chua ket noi!");
+
+        return;
+
+    }
+
+    client.publish(
+
+        topic,
+
+        value,
+
+        { qos: 0, retain: false },
+
+        function (error) {
+
+            if (error) {
+
+                console.error("Loi gui lenh:", error);
+
+            }
+
+            else {
+
+                console.log(
+                    "Da gui:", topic, value
+                );
+
+            }
+
+        }
+
+    );
+
+}
+
+
+//==================================================
+// 14. CHUYEN CHE DO AUTO / MANUAL
+//==================================================
+
+function setMode(mode) {
+
+    if (!connected) {
+
+        alert("Chua ket noi MQTT!");
+
+        return;
+
+    }
+
+    publishCommand(TOPICS.cmdMode, mode);
+
+}
+
+
+//==================================================
+// 15. DIEU KHIEN QUAT
+//==================================================
+
+function toggleFan() {
+
+    if (currentMode !== "MANUAL") {
+
+        alert("Hay chuyen sang MANUAL!");
+
+        return;
+
+    }
+
+    const newState =
+        fanState === "ON" ? "OFF" : "ON";
+
+    publishCommand(TOPICS.cmdFan, newState);
+
+}
+
+
+//==================================================
+// 16. DIEU KHIEN MAY BOM
+//==================================================
+
+function togglePump() {
+
+    if (currentMode !== "MANUAL") {
+
+        alert("Hay chuyen sang MANUAL!");
+
+        return;
+
+    }
+
+    const newState =
+        pumpState === "ON" ? "OFF" : "ON";
+
+    publishCommand(TOPICS.cmdPump, newState);
+
+}
+
+</script>
+
+</body>
+</html>
