@@ -41,6 +41,4 @@ WebSocket Port: 8000
 
 
 ## 8. Link Wokwi
-
-[[DÁN LINK DỰ ÁN WOKWI CỦA BẠN VÀO ĐÂY]
-](https://wokwi.com/projects/480580487536267265)
+(https://wokwi.com/projects/480580487536267265)
